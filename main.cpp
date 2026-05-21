@@ -30,9 +30,25 @@ struct SceneConfig {
 };
 
 int activeConfig = 0;
-bool keyWasPressed[4] = { false, false, false, false };
+bool keyWasPressed[5] = { false, false, false, false, false };
 bool useMouseLight = true;
 glm::vec3 mouseLightOffset(0.0f);
+float cameraOrbitAngle = 0.0f;
+float cameraDistanceOffset = 0.0f;
+float fovOffset = 0.0f;
+float deltaTime = 0.0f;
+float lastFrame = 0.0f;
+
+float clampFloat(float value, float minValue, float maxValue) {
+    if (value < minValue) return minValue;
+    if (value > maxValue) return maxValue;
+    return value;
+}
+
+void scrollCallback(GLFWwindow*, double, double yoffset) {
+    fovOffset -= static_cast<float>(yoffset) * 2.0f;
+    fovOffset = clampFloat(fovOffset, -18.0f, 22.0f);
+}
 
 // Shader Sumber
 const char* vertexShaderSource = "#version 330 core\n"
@@ -76,7 +92,7 @@ const char* fragmentShaderSource = "#version 330 core\n"
 
 const SceneConfig sceneConfigs[] = {
     {
-        "Putih indoor - glossy",
+        "Glossy White",
         { glm::vec3(0.20f, 0.20f, 0.19f), glm::vec3(0.88f, 0.86f, 0.78f), glm::vec3(0.55f, 0.55f, 0.50f), 64.0f },
         glm::vec3(3.0f, 5.0f, 4.0f),
         glm::vec3(1.0f, 1.0f, 1.0f),
@@ -87,7 +103,7 @@ const SceneConfig sceneConfigs[] = {
         0.8f
     },
     {
-        "Kuning latihan - warm",
+        "Warm Yellow",
         { glm::vec3(0.20f, 0.16f, 0.08f), glm::vec3(0.95f, 0.72f, 0.20f), glm::vec3(0.32f, 0.28f, 0.18f), 32.0f },
         glm::vec3(-3.5f, 4.5f, 3.0f),
         glm::vec3(1.0f, 0.90f, 0.72f),
@@ -98,7 +114,7 @@ const SceneConfig sceneConfigs[] = {
         0.55f
     },
     {
-        "Putih soft - studio",
+        "Soft White",
         { glm::vec3(0.18f, 0.19f, 0.20f), glm::vec3(0.82f, 0.84f, 0.82f), glm::vec3(0.40f, 0.43f, 0.42f), 24.0f },
         glm::vec3(2.0f, 6.0f, -3.5f),
         glm::vec3(0.82f, 0.90f, 1.0f),
@@ -135,6 +151,22 @@ void processInput(GLFWwindow* window) {
         glfwSetWindowShouldClose(window, true);
     }
 
+    float orbitSpeed = 1.2f * deltaTime;
+    float moveSpeed = 4.0f * deltaTime;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+        cameraOrbitAngle += orbitSpeed;
+    }
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+        cameraOrbitAngle -= orbitSpeed;
+    }
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+        cameraDistanceOffset -= moveSpeed;
+    }
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+        cameraDistanceOffset += moveSpeed;
+    }
+    cameraDistanceOffset = clampFloat(cameraDistanceOffset, -3.0f, 8.0f);
+
     const int keys[] = { GLFW_KEY_1, GLFW_KEY_2, GLFW_KEY_3 };
     for (int i = 0; i < 3; ++i) {
         bool isPressed = glfwGetKey(window, keys[i]) == GLFW_PRESS;
@@ -151,6 +183,15 @@ void processInput(GLFWwindow* window) {
         std::cout << "Mouse lighting: " << (useMouseLight ? "aktif" : "nonaktif") << std::endl;
     }
     keyWasPressed[3] = lPressed;
+
+    bool rPressed = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+    if (rPressed && !keyWasPressed[4]) {
+        cameraOrbitAngle = 0.0f;
+        cameraDistanceOffset = 0.0f;
+        fovOffset = 0.0f;
+        std::cout << "Kamera di-reset ke konfigurasi awal." << std::endl;
+    }
+    keyWasPressed[4] = rPressed;
 }
 
 void updateMouseLight(GLFWwindow* window) {
@@ -198,7 +239,7 @@ bool loadModel(const char* path, std::vector<float>& vertices) {
 int main() {
     // 1. Inisialisasi Window DULUAN
     if (!glfwInit()) return -1;
-    GLFWwindow* window = glfwCreateWindow(800, 600, "Tugas Projek OpenGL", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(800, 600, "OpenGL", NULL, NULL);
     if (!window) { glfwTerminate(); return -1; }
     glfwMakeContextCurrent(window);
 
@@ -208,6 +249,7 @@ int main() {
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow*, int width, int height) {
         glViewport(0, 0, width, height);
     });
+    glfwSetScrollCallback(window, scrollCallback);
     glEnable(GL_DEPTH_TEST); // Biar objek 3D gak tumpang tindih ngaco
 
     // 3. Load Model
@@ -217,9 +259,10 @@ int main() {
         glfwTerminate();
         return -1;
     } else {
-        std::cout << "Model Berhasil Dimuat! Vertices: " << modelVertices.size() / 6 << std::endl;
+    std::cout << "Model Berhasil Dimuat! Vertices: " << modelVertices.size() / 6 << std::endl;
     }
     std::cout << "Tekan 1/2/3 untuk mengganti konfigurasi material, lampu, kamera, dan projection." << std::endl;
+    std::cout << "W/S: maju-mundur kamera, A/D: orbit kamera, scroll: zoom, R: reset kamera." << std::endl;
     std::cout << "Gerakkan mouse untuk mengatur arah cahaya. Tekan L untuk toggle mouse lighting." << std::endl;
 
     // 4. Compile Shader
@@ -254,6 +297,10 @@ int main() {
 
     // 6. Loop Render
     while (!glfwWindowShouldClose(window)) {
+        float currentFrame = static_cast<float>(glfwGetTime());
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+
         processInput(window);
         updateMouseLight(window);
 
@@ -269,8 +316,16 @@ int main() {
         float aspect = height > 0 ? static_cast<float>(width) / static_cast<float>(height) : 1.0f;
 
         // Matriks 3D
-        glm::mat4 projection = glm::perspective(glm::radians(config.fov), aspect, 0.1f, 1000.0f);
-        glm::mat4 view = glm::lookAt(config.cameraPos, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::vec3 cameraTarget(0.0f, 1.0f, 0.0f);
+        glm::vec3 baseCameraVector = config.cameraPos - cameraTarget;
+        float cameraDistance = clampFloat(glm::length(baseCameraVector) + cameraDistanceOffset, 2.0f, 16.0f);
+        glm::mat4 orbit = glm::rotate(glm::mat4(1.0f), cameraOrbitAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::vec3 cameraDirection = glm::normalize(glm::vec3(orbit * glm::vec4(baseCameraVector, 0.0f)));
+        glm::vec3 cameraPos = cameraTarget + cameraDirection * cameraDistance;
+        float currentFov = clampFloat(config.fov + fovOffset, 18.0f, 75.0f);
+
+        glm::mat4 projection = glm::perspective(glm::radians(currentFov), aspect, 0.1f, 1000.0f);
+        glm::mat4 view = glm::lookAt(cameraPos, cameraTarget, glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::rotate(model, (float)glfwGetTime() * config.rotationSpeed, glm::vec3(0.15f, 1.0f, 0.1f)); // Muter otomatis
         model = glm::scale(model, glm::vec3(config.modelScale));
@@ -282,7 +337,7 @@ int main() {
         // Pencahayaan
         glm::vec3 lightPos = useMouseLight ? config.lightPos + mouseLightOffset : config.lightPos;
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightPos"), 1, glm::value_ptr(lightPos));
-        glUniform3fv(glGetUniformLocation(shaderProgram, "viewPos"), 1, glm::value_ptr(config.cameraPos));
+        glUniform3fv(glGetUniformLocation(shaderProgram, "viewPos"), 1, glm::value_ptr(cameraPos));
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(config.lightColor));
         glUniform3fv(glGetUniformLocation(shaderProgram, "material.ambient"), 1, glm::value_ptr(config.material.ambient));
         glUniform3fv(glGetUniformLocation(shaderProgram, "material.diffuse"), 1, glm::value_ptr(config.material.diffuse));
